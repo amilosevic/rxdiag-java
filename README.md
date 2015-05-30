@@ -1,1 +1,1 @@
-# rxdiag-swing
+# rxdiag-java
