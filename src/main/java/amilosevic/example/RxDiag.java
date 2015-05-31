@@ -1,14 +1,20 @@
 package amilosevic.example;
 
-import javafx.scene.transform.Transform;
+import rx.Observable;
+import rx.functions.Action1;
+import rx.functions.Func1;
+import rx.schedulers.SwingScheduler;
+import rx.schedulers.Timestamped;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.geom.*;
-import java.util.Collection;
-import java.util.Random;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Collections;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Rx Diag Java version.
@@ -16,7 +22,7 @@ import java.util.Random;
 public class RxDiag extends JFrame {
 
     // window dimensions
-    public static final int WIDTH = 1250;
+    public static final int WIDTH = 1280;
     public static final int HEIGHT = 620;
 
     // window inital position
@@ -29,22 +35,9 @@ public class RxDiag extends JFrame {
 
     /**
      * Constructs a new frame that is initially invisible.
-     * <p/>
-     * This constructor sets the component's locale property to the value
-     * returned by <code>JComponent.getDefaultLocale</code>.
-     *
-     * @throws java.awt.HeadlessException if GraphicsEnvironment.isHeadless()
-     *                                    returns true.
-     * @see java.awt.GraphicsEnvironment#isHeadless
-     * @see java.awt.Component#setSize
-     * @see java.awt.Component#setVisible
-     * @see javax.swing.JComponent#getDefaultLocale
      */
     public RxDiag() throws HeadlessException {
         super();
-        
-        final Diag diag = new Diag();
-        add(diag);
 
         setSize(WIDTH, HEIGHT);
         setLocation(X, Y);
@@ -53,29 +46,105 @@ public class RxDiag extends JFrame {
 
         setVisible(true);
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
+
+        // set up animation
+        DiagEv[] in = new DiagEv[] {
+            new DiagEv("marble", Color.RED, 1),
+            new DiagEv("marble", Color.BLUE, 3),
+            new DiagEv("marble", Color.GREEN, 4),
+            new DiagEv("complete", null, 8)
+        };
+
+        // construct from array
+        rx.Observable<DiagEv> inObs = rx.Observable.from(in);
+
+        // project in time
+        rx.Observable<DiagEv> inObs1 = inObs.flatMap(new Func1<DiagEv, Observable<DiagEv>>() {
+            @Override
+            public Observable<DiagEv> call(DiagEv diagEv) {
+                return rx.Observable.just(diagEv).delay(diagEv.tick * 1000, TimeUnit.MILLISECONDS);
+            }
+        });
+
+        // combinator
+
+        rx.Observable<DiagEv> outObs = inObs1.delay(500, TimeUnit.MILLISECONDS);
+
+        // construct panel
+        final Diag diag = new Diag(inObs1, outObs);
+        add(diag);
     }
 
     public static void main(String[] args) {
         //
-        javax.swing.SwingUtilities.invokeLater(new Runnable() {
+        SwingUtilities.invokeLater(new Runnable() {
             public void run() {
                 new RxDiag();
             }
         });
+    }
 
+    Observable<Long> seconds = Observable.interval(1, TimeUnit.SECONDS).take(15);
+}
+
+class DiagEv {
+    public final String shape;
+    public final Color color;
+    public final int tick;
+
+    public DiagEv(String shape, Color color, int tick) {
+        this.shape = shape;
+        this.color = color;
+        this.tick = tick;
+    }
+
+}
+
+class Framed<T> {
+    public final T value;
+    public final int frame;
+
+    public Framed(T value, int frame) {
+        this.value = value;
+        this.frame = frame;
     }
 }
 
 class Diag extends JPanel implements ActionListener {
 
-    private final int DELAY = 150;
-    private final Timer timer;
+    private final List<Framed<DiagEv>> inputs = Collections.synchronizedList(new ArrayList<Framed<DiagEv>>());
+    private final List<Framed<DiagEv>> outputs = Collections.synchronizedList(new ArrayList<Framed<DiagEv>>());
 
-    private final BasicStroke stroke = new BasicStroke(6.f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
+    private final BasicStroke stroke = new BasicStroke(6.f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND);
 
-    public Diag() {
-        timer = new Timer(DELAY, this);
-        timer.start();
+    public Diag(Observable<DiagEv> inputObs, Observable<DiagEv> outputObs) {
+
+        final long reference = System.currentTimeMillis();
+
+        inputObs.subscribeOn(SwingScheduler.getInstance())
+                .timestamp().subscribe(new Action1<Timestamped<DiagEv>>() {
+            @Override
+            public void call(Timestamped<DiagEv> tde) {
+                // update data
+                synchronized (inputs) {
+                    inputs.add(new Framed<DiagEv>(tde.getValue(), (int)(tde.getTimestampMillis() - reference)/100));
+                }
+                repaint();
+
+            }
+        });
+
+        outputObs.subscribeOn(SwingScheduler.getInstance())
+                .timestamp().subscribe(new Action1<Timestamped<DiagEv>>() {
+            @Override
+            public void call(Timestamped<DiagEv> tde) {
+                // update data
+                synchronized (outputs) {
+                    outputs.add(new Framed<DiagEv>(tde.getValue(), (int)(tde.getTimestampMillis() - reference)/100));
+                }
+                repaint();
+            }
+        });
     }
 
     /**
@@ -92,6 +161,7 @@ class Diag extends JPanel implements ActionListener {
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         doDrawing(g);
+        System.out.println("x");
     }
 
     private void doDrawing(Graphics g) {
@@ -102,8 +172,10 @@ class Diag extends JPanel implements ActionListener {
 
         // backgound
         eventline(g2, 100);
-        combinatorbox(g2, 310);
+        combinator(g2, 310);
         eventline(g2, 500);
+
+        /*
 
         // marbles
         marble(g2, 100, 100, Color.GREEN);
@@ -112,13 +184,27 @@ class Diag extends JPanel implements ActionListener {
         pentagon(g2, 600, 100, Color.MAGENTA);
         triangle(g2, 250, 100, Color.CYAN);
 
+        // events
         complete(g2, 900, 100);
         error(g2, 1100, 100);
 
+        */
+
+        synchronized (inputs) {
+            for (Framed<DiagEv> ev: inputs) {
+                marble(g2, 50 + ev.frame * 10, 100, ev.value.color);
+            }
+        }
+
+        synchronized (outputs) {
+            for (Framed<DiagEv> ev: outputs) {
+                marble(g2, 50 + ev.frame * 10, 500, ev.value.color);
+            }
+        }
 
     }
 
-    private void combinatorbox(Graphics2D g2, int y) {
+    private void combinator(Graphics2D g2, int y) {
         final int cheight = 130;
         final int cwidth = RxDiag.WIDTH - 2*15;
         final Rectangle2D.Float shape = new Rectangle2D.Float(15, y - cheight / 2, cwidth, cheight);
