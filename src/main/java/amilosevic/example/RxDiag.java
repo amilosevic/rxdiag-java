@@ -1,6 +1,7 @@
 package amilosevic.example;
 
 import rx.Observable;
+import rx.functions.Action0;
 import rx.functions.Action1;
 import rx.functions.Func1;
 import rx.schedulers.SwingScheduler;
@@ -52,7 +53,7 @@ public class RxDiag extends JFrame {
             new DiagEv("marble", Color.RED, 1),
             new DiagEv("marble", Color.BLUE, 3),
             new DiagEv("marble", Color.GREEN, 4),
-            new DiagEv("complete", null, 8)
+            new DiagEv("error", null, 8)
         };
 
         // construct from array
@@ -62,7 +63,18 @@ public class RxDiag extends JFrame {
         rx.Observable<DiagEv> inObs1 = inObs.flatMap(new Func1<DiagEv, Observable<DiagEv>>() {
             @Override
             public Observable<DiagEv> call(DiagEv diagEv) {
-                return rx.Observable.just(diagEv).delay(diagEv.tick * 1000, TimeUnit.MILLISECONDS);
+                if (diagEv.shape.equals("complete")) {
+                    return rx.Observable.<DiagEv>empty()
+                            .delay(diagEv.tick * 1000, TimeUnit.MILLISECONDS);
+                } else if (diagEv.shape.equals("error")) {
+                    return rx.Observable.concat(
+                            rx.Observable.<DiagEv>empty().delay(diagEv.tick * 1000, TimeUnit.MILLISECONDS),
+                            rx.Observable.<DiagEv>error(new Error("Throw!"))
+                    );
+                } else {
+                    return rx.Observable.just(diagEv)
+                            .delay(diagEv.tick * 1000, TimeUnit.MILLISECONDS);
+                }
             }
         });
 
@@ -124,29 +136,83 @@ class Diag extends JPanel implements ActionListener {
         final long reference = System.currentTimeMillis();
 
         inputObs.subscribeOn(SwingScheduler.getInstance())
-                .timestamp().subscribe(new Action1<Timestamped<DiagEv>>() {
-            @Override
-            public void call(Timestamped<DiagEv> tde) {
-                // update data
-                synchronized (inputs) {
-                    inputs.add(new Framed<DiagEv>(tde.getValue(), (int)(tde.getTimestampMillis() - reference)/100));
-                }
-                repaint();
+                .timestamp().subscribe(
+                new Action1<Timestamped<DiagEv>>() {
+                    @Override
+                    public void call(Timestamped<DiagEv> tde) {
+                        // update data
+                        synchronized (inputs) {
+                            final int frame = frame(tde.getTimestampMillis(), reference);
+                            inputs.add(new Framed<DiagEv>(tde.getValue(), frame));
+                        }
+                        repaint();
 
-            }
-        });
+                    }
+
+                },
+                new Action1<Throwable>() {
+                    @Override
+                    public void call(Throwable throwable) {
+                        System.out.println("in; error");
+                        synchronized (inputs) {
+                            final int frame = frame(System.currentTimeMillis(), reference);
+                            inputs.add(new Framed<DiagEv>(new DiagEv("error", null, 0), frame));
+                        }
+                        repaint();
+                    }
+                },
+                new Action0() {
+                    @Override
+                    public void call() {
+                        System.out.println("in; complete");
+                        synchronized (inputs) {
+                            final int frame = frame(System.currentTimeMillis(), reference);
+                            inputs.add(new Framed<DiagEv>(new DiagEv("complete", null, 0), frame));
+                        }
+                        repaint();
+                    }
+
+                }
+
+        );
 
         outputObs.subscribeOn(SwingScheduler.getInstance())
-                .timestamp().subscribe(new Action1<Timestamped<DiagEv>>() {
-            @Override
-            public void call(Timestamped<DiagEv> tde) {
-                // update data
-                synchronized (outputs) {
-                    outputs.add(new Framed<DiagEv>(tde.getValue(), (int)(tde.getTimestampMillis() - reference)/100));
+                .timestamp().subscribe(
+                new Action1<Timestamped<DiagEv>>() {
+                    @Override
+                    public void call(Timestamped<DiagEv> tde) {
+                        // update data
+                        synchronized (outputs) {
+                            outputs.add(new Framed<DiagEv>(tde.getValue(), (int) (tde.getTimestampMillis() - reference) / 100));
+                        }
+                        repaint();
+                    }
+                },
+                new Action1<Throwable>() {
+                    @Override
+                    public void call(Throwable throwable) {
+                        System.out.println("out; error");
+                        synchronized (outputs) {
+                            final int frame = frame(System.currentTimeMillis(), reference);
+                            outputs.add(new Framed<DiagEv>(new DiagEv("error", null, 0), frame));
+                        }
+                        repaint();
+                    }
+                },
+                new Action0() {
+                    @Override
+                    public void call() {
+                        System.out.println("out; complete");
+                        synchronized (outputs) {
+                            final int frame = frame(System.currentTimeMillis(), reference);
+                            outputs.add(new Framed<DiagEv>(new DiagEv("complete", null, 0), frame));
+                        }
+                        repaint();
+                    }
+
                 }
-                repaint();
-            }
-        });
+
+        );
     }
     /**
      * Invoked when an action occurs.
@@ -162,7 +228,7 @@ class Diag extends JPanel implements ActionListener {
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         doDrawing(g);
-        System.out.println("x");
+        System.out.println("repaint()");
     }
 
     private final BasicStroke stroke = new BasicStroke(6.f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND);
@@ -174,9 +240,12 @@ class Diag extends JPanel implements ActionListener {
         g2.setStroke(stroke);
 
         // backgound
-        eventline(g2, 100);
+        final int yin = 100;
+        final int yout = 500;
+
+        eventline(g2, yin);
         combinator(g2, 310, text);
-        eventline(g2, 500);
+        eventline(g2, yout);
 
         /*
 
@@ -194,17 +263,25 @@ class Diag extends JPanel implements ActionListener {
         */
 
         synchronized (inputs) {
-            for (Framed<DiagEv> ev: inputs) {
-                marble(g2, 50 + ev.frame * 10, 100, ev.value.color);
-            }
+            drawEv(g2, yin, inputs);
         }
 
         synchronized (outputs) {
-            for (Framed<DiagEv> ev: outputs) {
-                marble(g2, 50 + ev.frame * 10, 500, ev.value.color);
-            }
+            drawEv(g2, yout, outputs);
         }
 
+    }
+
+    private void drawEv(Graphics2D g2, int y, List<Framed<DiagEv>> evs) {
+        for (Framed<DiagEv> ev: evs) {
+            if (ev.value.shape.equals("complete")) {
+                complete(g2, 50 + ev.frame * 10, y);
+            } else if (ev.value.shape.equals("error")) {
+                error(g2, 50 + ev.frame * 10, y);
+            } else {
+                marble(g2, 50 + ev.frame * 10, y, ev.value.color);
+            }
+        }
     }
 
     private void combinator(Graphics2D g2, int y, String text) {
@@ -352,5 +429,9 @@ class Diag extends JPanel implements ActionListener {
 
         return line1;
 
+    }
+
+    private int frame(final long timestampMillis, final long reference) {
+        return (int) (timestampMillis - reference) / 100;
     }
 }
