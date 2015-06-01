@@ -1,6 +1,15 @@
 # rxdiag-java
 
-Java2D klon *rxdiag* projekta. Bez SVG generisanja. https://github.com/amilosevic/rxdiag
+Java2D klon **rxdiag** projekta. Bez SVG generisanja. https://github.com/amilosevic/rxdiag
+
+## Pokretanje
+
+Ovo je Maven projekat. 
+
+```
+mvn compile exec:java
+```
+
 
 ## Links
 
