@@ -4,7 +4,7 @@ Java2D klon **rxdiag** projekta. Bez SVG generisanja. https://github.com/amilose
 
 ## Pokretanje
 
-Ovo je Maven projekat. 
+Ovo je Maven projekat. Pokretanje iz komandne linije:
 
 ```
 mvn compile exec:java
