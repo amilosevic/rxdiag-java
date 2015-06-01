@@ -71,7 +71,7 @@ public class RxDiag extends JFrame {
         rx.Observable<DiagEv> outObs = inObs1.delay(500, TimeUnit.MILLISECONDS);
 
         // construct panel
-        final Diag diag = new Diag(inObs1, outObs);
+        final Diag diag = new Diag(inObs1, outObs, "Delay(500ms)");
         add(diag);
     }
 
@@ -115,9 +115,11 @@ class Diag extends JPanel implements ActionListener {
     private final List<Framed<DiagEv>> inputs = Collections.synchronizedList(new ArrayList<Framed<DiagEv>>());
     private final List<Framed<DiagEv>> outputs = Collections.synchronizedList(new ArrayList<Framed<DiagEv>>());
 
-    private final BasicStroke stroke = new BasicStroke(6.f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND);
+    private final String text;
 
-    public Diag(Observable<DiagEv> inputObs, Observable<DiagEv> outputObs) {
+    public Diag(Observable<DiagEv> inputObs, Observable<DiagEv> outputObs, String text) {
+
+        this.text = text;
 
         final long reference = System.currentTimeMillis();
 
@@ -146,7 +148,6 @@ class Diag extends JPanel implements ActionListener {
             }
         });
     }
-
     /**
      * Invoked when an action occurs.
      *
@@ -156,13 +157,15 @@ class Diag extends JPanel implements ActionListener {
     public void actionPerformed(ActionEvent e) {
         repaint();
     }
-
     @Override
+
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         doDrawing(g);
         System.out.println("x");
     }
+
+    private final BasicStroke stroke = new BasicStroke(6.f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND);
 
     private void doDrawing(Graphics g) {
 
@@ -172,7 +175,7 @@ class Diag extends JPanel implements ActionListener {
 
         // backgound
         eventline(g2, 100);
-        combinator(g2, 310);
+        combinator(g2, 310, text);
         eventline(g2, 500);
 
         /*
@@ -204,7 +207,7 @@ class Diag extends JPanel implements ActionListener {
 
     }
 
-    private void combinator(Graphics2D g2, int y) {
+    private void combinator(Graphics2D g2, int y, String text) {
         final int cheight = 130;
         final int cwidth = RxDiag.WIDTH - 2*15;
         final Rectangle2D.Float shape = new Rectangle2D.Float(15, y - cheight / 2, cwidth, cheight);
@@ -214,6 +217,11 @@ class Diag extends JPanel implements ActionListener {
         g2.setColor(Color.BLACK);
         g2.draw(shape);
 
+        Font prev = g2.getFont();
+        g2.setFont(new Font(prev.getName(), Font.BOLD, 48));
+        g2.drawString(text, 440, y + 15); // @todo: place in center
+
+        g2.setFont(prev);
 
     }
 
