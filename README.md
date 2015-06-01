@@ -1,5 +1,7 @@
 # rxdiag-java
 
+Java2D klon *rxdiag* projekta. Bez SVG generisanja. https://github.com/amilosevic/rxdiag
+
 ## Links
 
 - https://github.com/ReactiveX/RxJava
