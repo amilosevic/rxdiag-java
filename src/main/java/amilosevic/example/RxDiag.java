@@ -27,8 +27,8 @@ public class RxDiag extends JFrame {
     public static final int HEIGHT = 620;
 
     // window inital position
-    private static final int X = 10;
-    private static final int Y = 10;
+    private static final int X = 60;
+    private static final int Y = 60;
 
     // title
     private static final String TITLE = "RxDiag";
@@ -240,8 +240,8 @@ class Diag extends JPanel implements ActionListener {
         g2.setStroke(stroke);
 
         // backgound
-        final int yin = 100;
-        final int yout = 500;
+        final int yin = 100; // in eventline y coordinate
+        final int yout = 500; // out eventlne y coordinate
 
         eventline(g2, yin);
         combinator(g2, 310, text);
@@ -278,8 +278,18 @@ class Diag extends JPanel implements ActionListener {
                 complete(g2, 50 + ev.frame * 10, y);
             } else if (ev.value.shape.equals("error")) {
                 error(g2, 50 + ev.frame * 10, y);
-            } else {
+            } else if (ev.value.shape.equals("marble")) {
                 marble(g2, 50 + ev.frame * 10, y, ev.value.color);
+            } else if (ev.value.shape.equals("square")) {
+                square(g2, 50 + ev.frame * 10, y, ev.value.color);
+            } else if (ev.value.shape.equals("diamond")) {
+                diamond(g2, 50 + ev.frame * 10, y, ev.value.color);
+            } else if (ev.value.shape.equals("pentagon")) {
+                pentagon(g2, 50 + ev.frame * 10, y, ev.value.color);
+            } else if (ev.value.shape.equals("triangle")) {
+                triangle(g2, 50 + ev.frame * 10, y, ev.value.color);
+            } else {
+                throw new IllegalArgumentException("Unknown shape!");
             }
         }
     }
