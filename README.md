@@ -1,5 +1,16 @@
 # rxdiag-java
 
+Java2D klon **rxdiag** projekta. Bez SVG generisanja. https://github.com/amilosevic/rxdiag
+
+## Pokretanje
+
+Ovo je Maven projekat. Pokretanje iz komandne linije:
+
+```
+mvn compile exec:java
+```
+http://youtu.be/MbZHOEBg0Xg
+
 ## Links
 
 - https://github.com/ReactiveX/RxJava
