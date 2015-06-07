@@ -13,6 +13,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.geom.*;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
@@ -26,6 +27,8 @@ public class RxDiag extends JFrame {
     public static final int WIDTH = 1280;
     public static final int HEIGHT = 620;
 
+    public static final int EV_LINE_HEIGHT = 120;
+
     // window inital position
     private static final int X = 60;
     private static final int Y = 60;
@@ -37,67 +40,100 @@ public class RxDiag extends JFrame {
     /**
      * Constructs a new frame that is initially invisible.
      */
-    public RxDiag() throws HeadlessException {
+    public RxDiag(DiagTransform transform, DiagEv[] ... ins) throws HeadlessException {
         super();
 
-        setSize(WIDTH, HEIGHT);
+        setSize(WIDTH, HEIGHT + (ins.length - 1) * EV_LINE_HEIGHT);
         setLocation(X, Y);
         setResizable(false);
-        setTitle(TITLE);
+        setTitle(TITLE + " // " + transform.title());
 
         setVisible(true);
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
 
-        // set up animation
-        DiagEv[] in = new DiagEv[] {
-            new DiagEv("marble", Color.RED, 1),
-            new DiagEv("marble", Color.BLUE, 3),
-            new DiagEv("marble", Color.GREEN, 4),
-            new DiagEv("error", null, 8)
-        };
+        // inputs
+        List<Observable<DiagEv>> inObs = new ArrayList<Observable<DiagEv>>();
 
-        // construct from array
-        rx.Observable<DiagEv> inObs = rx.Observable.from(in);
+        for (DiagEv[] in: ins) {
+            Observable<DiagEv> in1 = project(in);
+            inObs.add(in1);
+        }
+
+        // apply combinator
+        Observable<DiagEv> outObs = transform.apply(inObs.toArray(new Observable[ins.length]));
+
+        // construct panel
+        final Diag diag = new Diag(transform.title(), outObs, inObs);
+
+        add(diag);
+    }
+
+
+    private Observable<DiagEv> project(DiagEv[] in) {
+        // create observable from array
+        Observable<DiagEv> inObs = Observable.from(in);
 
         // project in time
-        rx.Observable<DiagEv> inObs1 = inObs.flatMap(new Func1<DiagEv, Observable<DiagEv>>() {
+        return inObs.flatMap(new Func1<DiagEv, Observable<DiagEv>>() {
             @Override
             public Observable<DiagEv> call(DiagEv diagEv) {
                 if (diagEv.shape.equals("complete")) {
-                    return rx.Observable.<DiagEv>empty()
+                    return Observable.<DiagEv>empty()
                             .delay(diagEv.tick * 1000, TimeUnit.MILLISECONDS);
                 } else if (diagEv.shape.equals("error")) {
-                    return rx.Observable.concat(
-                            rx.Observable.<DiagEv>empty().delay(diagEv.tick * 1000, TimeUnit.MILLISECONDS),
-                            rx.Observable.<DiagEv>error(new Error("Throw!"))
+                    return Observable.concat(
+                            Observable.<DiagEv>empty().delay(diagEv.tick * 1000, TimeUnit.MILLISECONDS),
+                            Observable.<DiagEv>error(new Error("Throw!"))
                     );
                 } else {
-                    return rx.Observable.just(diagEv)
+                    return Observable.just(diagEv)
                             .delay(diagEv.tick * 1000, TimeUnit.MILLISECONDS);
                 }
             }
         });
+    }
 
-        // combinator
+    public static abstract class DiagTransform {
 
-        rx.Observable<DiagEv> outObs = inObs1.delay(500, TimeUnit.MILLISECONDS);
+        public abstract Observable<DiagEv> apply(Observable<DiagEv> ... inputs);
 
-        // construct panel
-        final Diag diag = new Diag(inObs1, outObs, "Delay(500ms)");
-        add(diag);
+        public abstract String title();
     }
 
     public static void main(String[] args) {
-        //
+
+        // @todo: externalize inputs definition, maybe move to DiagTransform
+        final DiagEv[] in0 = new DiagEv[] {
+                new DiagEv("marble", Color.RED, 2),
+                new DiagEv("marble", Color.BLUE, 7),
+                new DiagEv("marble", Color.GREEN, 4),
+                new DiagEv("error", null, 8)
+        };
+
+        final DiagEv[] in1 = new DiagEv[] {
+//                new DiagEv("diamond", Color.RED, 2),
+                new DiagEv("diamond", Color.BLUE, 5),
+                new DiagEv("diamond", Color.GREEN, 6),
+                new DiagEv("complete", null, 9)
+        };
+
+        final DiagEv[] in2 = new DiagEv[] {
+                new DiagEv("square", Color.CYAN, 1),
+                new DiagEv("square", Color.YELLOW, 3),
+                new DiagEv("square", Color.GRAY, 9),
+                new DiagEv("complete", null, 10)
+        };
+
+
+        // @todo: load transformation by class name, passed by args
         SwingUtilities.invokeLater(new Runnable() {
             public void run() {
-                new RxDiag();
+                new RxDiag(new ExMergeTransform(), in0, in1, in2);
             }
         });
     }
-
-    Observable<Long> seconds = Observable.interval(1, TimeUnit.SECONDS).take(15);
 }
+
 
 class DiagEv {
     public final String shape;
@@ -106,7 +142,7 @@ class DiagEv {
 
     public DiagEv(String shape, Color color, int tick) {
         this.shape = shape;
-        this.color = color;
+        this.color = (color == null ? Color.GREEN : color);
         this.tick = tick;
     }
 
@@ -124,57 +160,68 @@ class Framed<T> {
 
 class Diag extends JPanel implements ActionListener {
 
-    private final List<Framed<DiagEv>> inputs = Collections.synchronizedList(new ArrayList<Framed<DiagEv>>());
-    private final List<Framed<DiagEv>> outputs = Collections.synchronizedList(new ArrayList<Framed<DiagEv>>());
+    private final List<List<Framed<DiagEv>>> inputs = new ArrayList<List<Framed<DiagEv>>>();
+    private final List<Framed<DiagEv>> outputs;
 
     private final String text;
 
-    public Diag(Observable<DiagEv> inputObs, Observable<DiagEv> outputObs, String text) {
+    public Diag(final String text, Observable<DiagEv> outputObs, Observable<DiagEv> inObs) {
+        this(text, outputObs, Arrays.asList(inObs));
+    }
+
+    public Diag(final String text, Observable<DiagEv> outputObs, List<Observable<DiagEv>> inputObs) {
 
         this.text = text;
 
         final long reference = System.currentTimeMillis();
 
-        inputObs.subscribeOn(SwingScheduler.getInstance())
-                .timestamp().subscribe(
-                new Action1<Timestamped<DiagEv>>() {
-                    @Override
-                    public void call(Timestamped<DiagEv> tde) {
-                        // update data
-                        synchronized (inputs) {
-                            final int frame = frame(tde.getTimestampMillis(), reference);
-                            inputs.add(new Framed<DiagEv>(tde.getValue(), frame));
+        for (Observable<DiagEv> inObs: inputObs) {
+            final List<Framed<DiagEv>> in = Collections.synchronizedList(new ArrayList<Framed<DiagEv>>());
+            inputs.add(in);
+
+            inObs.subscribeOn(SwingScheduler.getInstance())
+                    .timestamp().subscribe(
+                    new Action1<Timestamped<DiagEv>>() {
+                        @Override
+                        public void call(Timestamped<DiagEv> tde) {
+                            // update data
+                            synchronized (in) {
+                                final int frame = frame(tde.getTimestampMillis(), reference);
+                                in.add(new Framed<DiagEv>(tde.getValue(), frame));
+                            }
+                            repaint();
+
                         }
-                        repaint();
+
+                    },
+                    new Action1<Throwable>() {
+                        @Override
+                        public void call(Throwable throwable) {
+                            System.out.println("in; error");
+                            synchronized (in) {
+                                final int frame = frame(System.currentTimeMillis(), reference);
+                                in.add(new Framed<DiagEv>(new DiagEv("error", null, 0), frame));
+                            }
+                            repaint();
+                        }
+                    },
+                    new Action0() {
+                        @Override
+                        public void call() {
+                            System.out.println("in; complete");
+                            synchronized (in) {
+                                final int frame = frame(System.currentTimeMillis(), reference);
+                                in.add(new Framed<DiagEv>(new DiagEv("complete", null, 0), frame));
+                            }
+                            repaint();
+                        }
 
                     }
 
-                },
-                new Action1<Throwable>() {
-                    @Override
-                    public void call(Throwable throwable) {
-                        System.out.println("in; error");
-                        synchronized (inputs) {
-                            final int frame = frame(System.currentTimeMillis(), reference);
-                            inputs.add(new Framed<DiagEv>(new DiagEv("error", null, 0), frame));
-                        }
-                        repaint();
-                    }
-                },
-                new Action0() {
-                    @Override
-                    public void call() {
-                        System.out.println("in; complete");
-                        synchronized (inputs) {
-                            final int frame = frame(System.currentTimeMillis(), reference);
-                            inputs.add(new Framed<DiagEv>(new DiagEv("complete", null, 0), frame));
-                        }
-                        repaint();
-                    }
+            );
+        }
 
-                }
-
-        );
+        outputs = Collections.synchronizedList(new ArrayList<Framed<DiagEv>>());
 
         outputObs.subscribeOn(SwingScheduler.getInstance())
                 .timestamp().subscribe(
@@ -241,34 +288,34 @@ class Diag extends JPanel implements ActionListener {
 
         // backgound
         final int yin = 100; // in eventline y coordinate
+        final int yc = 310;
         final int yout = 500; // out eventlne y coordinate
 
-        eventline(g2, yin);
-        combinator(g2, 310, text);
-        eventline(g2, yout);
+        // delta height for combinator & output line
+        final int delta = (inputs.size() - 1) * RxDiag.EV_LINE_HEIGHT;
 
-        /*
 
-        // marbles
-        marble(g2, 100, 100, Color.GREEN);
-        square(g2, 400, 100, Color.BLUE);
-        diamond(g2, 800, 100, Color.RED);
-        pentagon(g2, 600, 100, Color.MAGENTA);
-        triangle(g2, 250, 100, Color.CYAN);
+        // draw inputs
+        int i = 0;
+        for (final List<Framed<DiagEv>> in: inputs) {
+            final int d = i++ * RxDiag.EV_LINE_HEIGHT;
 
-        // events
-        complete(g2, 900, 100);
-        error(g2, 1100, 100);
-
-        */
-
-        synchronized (inputs) {
-            drawEv(g2, yin, inputs);
+            eventline(g2, yin + d);
+            synchronized (inputs) {
+                drawEv(g2, yin + d, in);
+            }
         }
 
+        // draw combinator box
+        combinator(g2, yc + delta, text);
+
+        // draw outputs
+        eventline(g2, yout + delta);
         synchronized (outputs) {
-            drawEv(g2, yout, outputs);
+            drawEv(g2, yout + delta, outputs);
         }
+
+
 
     }
 
