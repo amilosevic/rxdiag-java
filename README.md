@@ -9,7 +9,8 @@ Ovo je Maven projekat. Pokretanje iz komandne linije:
 ```
 mvn compile exec:java
 ```
-http://youtu.be/MbZHOEBg0Xg
+ - Delay operator example http://youtu.be/MbZHOEBg0Xg
+ - Merge operator example http://youtu.be/tvEaDdRKTYc
 
 ## Links
 
