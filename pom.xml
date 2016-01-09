@@ -29,6 +29,7 @@
                 </executions>
                 <configuration>
                     <mainClass>amilosevic.example.RxDiag</mainClass>
+                    <killAfter>-1</killAfter>
                 </configuration>
             </plugin>
         </plugins>

@@ -134,14 +134,24 @@ public class RxDiag extends JFrame {
     }
 }
 
+enum DiagShape {
+    MARBLE,
+    SQUARE,
+    DIAMOND,
+    TRIANGLE,
+    PENTAGON,
+    COMPLETE,
+    ERROR;
+}
+
 
 class DiagEv {
-    public final String shape;
+    public final DiagShape shape;
     public final Color color;
     public final int tick;
 
     public DiagEv(String shape, Color color, int tick) {
-        this.shape = shape;
+        this.shape = DiagShape.valueOf(shape.toUpperCase());
         this.color = (color == null ? Color.GREEN : color);
         this.tick = tick;
     }
@@ -270,8 +280,8 @@ class Diag extends JPanel implements ActionListener {
     public void actionPerformed(ActionEvent e) {
         repaint();
     }
-    @Override
 
+    @Override
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         doDrawing(g);
@@ -321,23 +331,17 @@ class Diag extends JPanel implements ActionListener {
 
     private void drawEv(Graphics2D g2, int y, List<Framed<DiagEv>> evs) {
         for (Framed<DiagEv> ev: evs) {
-            if (ev.value.shape.equals("complete")) {
-                complete(g2, 50 + ev.frame * 10, y);
-            } else if (ev.value.shape.equals("error")) {
-                error(g2, 50 + ev.frame * 10, y);
-            } else if (ev.value.shape.equals("marble")) {
-                marble(g2, 50 + ev.frame * 10, y, ev.value.color);
-            } else if (ev.value.shape.equals("square")) {
-                square(g2, 50 + ev.frame * 10, y, ev.value.color);
-            } else if (ev.value.shape.equals("diamond")) {
-                diamond(g2, 50 + ev.frame * 10, y, ev.value.color);
-            } else if (ev.value.shape.equals("pentagon")) {
-                pentagon(g2, 50 + ev.frame * 10, y, ev.value.color);
-            } else if (ev.value.shape.equals("triangle")) {
-                triangle(g2, 50 + ev.frame * 10, y, ev.value.color);
-            } else {
-                throw new IllegalArgumentException("Unknown shape!");
+            switch (ev.value.shape) {
+                case COMPLETE: complete(g2, 50 + ev.frame * 10, y); break;
+                case ERROR: error(g2, 50 + ev.frame * 10, y); break;
+                case MARBLE: marble(g2, 50 + ev.frame * 10, y, ev.value.color); break;
+                case SQUARE: square(g2, 50 + ev.frame * 10, y, ev.value.color); break;
+                case DIAMOND: diamond(g2, 50 + ev.frame * 10, y, ev.value.color); break;
+                case PENTAGON: pentagon(g2, 50 + ev.frame * 10, y, ev.value.color); break;
+                case TRIANGLE: triangle(g2, 50 + ev.frame * 10, y, ev.value.color); break;
+                default: throw new IllegalArgumentException("Unhandled shape");
             }
+
         }
     }
 
