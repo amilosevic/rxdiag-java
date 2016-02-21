@@ -1,4 +1,4 @@
-package amilosevic.example;
+package amilosevic.example.rxdiag;
 
 import rx.Observable;
 
