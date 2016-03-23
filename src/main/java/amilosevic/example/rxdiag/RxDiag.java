@@ -233,7 +233,7 @@ class Diag extends JPanel implements ActionListener {
 
         outputs = Collections.synchronizedList(new ArrayList<Framed<DiagEv>>());
 
-        outputObs.subscribeOn(SwingScheduler.getInstance())
+        outputObs/*.subscribeOn(SwingScheduler.getInstance())*/
                 .timestamp().subscribe(
                 new Action1<Timestamped<DiagEv>>() {
                     @Override
@@ -268,8 +268,10 @@ class Diag extends JPanel implements ActionListener {
                     }
 
                 }
-
         );
+
+        Timer timer = new Timer(25, this);
+        timer.start();
     }
     /**
      * Invoked when an action occurs.
@@ -285,7 +287,6 @@ class Diag extends JPanel implements ActionListener {
     protected void paintComponent(Graphics g) {
         super.paintComponent(g);
         doDrawing(g);
-        System.out.println("repaint()");
     }
 
     private final BasicStroke stroke = new BasicStroke(6.f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND);
@@ -311,7 +312,7 @@ class Diag extends JPanel implements ActionListener {
             final int d = i++ * RxDiag.EV_LINE_HEIGHT;
 
             eventline(g2, yin + d);
-            synchronized (inputs) {
+            synchronized (in) {
                 drawEv(g2, yin + d, in);
             }
         }
