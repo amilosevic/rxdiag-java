@@ -1,6 +1,7 @@
 package amilosevic.example.rxdiag;
 
 import rx.Observable;
+import rx.Subscription;
 import rx.functions.Action0;
 import rx.functions.Action1;
 import rx.functions.Func1;
@@ -11,6 +12,8 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.geom.*;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -171,7 +174,8 @@ class Framed<T> {
 class Diag extends JPanel implements ActionListener {
 
     private final List<List<Framed<DiagEv>>> inputs = new ArrayList<List<Framed<DiagEv>>>();
-    private final List<Framed<DiagEv>> outputs;
+    private final List<Framed<DiagEv>> outputs = Collections.synchronizedList(new ArrayList<Framed<DiagEv>>());
+    private final List<Subscription> subscriptions = new ArrayList<>();
 
     private final String text;
 
@@ -179,9 +183,27 @@ class Diag extends JPanel implements ActionListener {
         this(text, outputObs, Arrays.asList(inObs));
     }
 
-    public Diag(final String text, Observable<DiagEv> outputObs, List<Observable<DiagEv>> inputObs) {
+    public Diag(final String text, final Observable<DiagEv> outputObs, final List<Observable<DiagEv>> inputObs) {
 
         this.text = text;
+
+        start(outputObs, inputObs);
+
+        addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                start(outputObs, inputObs);
+            }
+        });
+
+        Timer timer = new Timer(25, this);
+        timer.start();
+
+    }
+
+    private void start(Observable<DiagEv> outputObs, List<Observable<DiagEv>> inputObs) {
+
+        clear();
 
         final long reference = System.currentTimeMillis();
 
@@ -189,7 +211,7 @@ class Diag extends JPanel implements ActionListener {
             final List<Framed<DiagEv>> in = Collections.synchronizedList(new ArrayList<Framed<DiagEv>>());
             inputs.add(in);
 
-            inObs.subscribeOn(SwingScheduler.getInstance())
+            Subscription s = inObs.subscribeOn(SwingScheduler.getInstance())
                     .timestamp().subscribe(
                     new Action1<Timestamped<DiagEv>>() {
                         @Override
@@ -229,11 +251,13 @@ class Diag extends JPanel implements ActionListener {
                     }
 
             );
+
+            this.subscriptions.add(s);
         }
 
-        outputs = Collections.synchronizedList(new ArrayList<Framed<DiagEv>>());
 
-        outputObs/*.subscribeOn(SwingScheduler.getInstance())*/
+
+        Subscription s = outputObs/*.subscribeOn(SwingScheduler.getInstance())*/
                 .timestamp().subscribe(
                 new Action1<Timestamped<DiagEv>>() {
                     @Override
@@ -270,9 +294,23 @@ class Diag extends JPanel implements ActionListener {
                 }
         );
 
-        Timer timer = new Timer(25, this);
-        timer.start();
+        subscriptions.add(s);
     }
+
+    private void clear() {
+        for (Subscription s: subscriptions) {
+            if (!s.isUnsubscribed()) {
+                s.unsubscribe();
+            }
+        }
+
+        subscriptions.clear();
+
+        inputs.clear();
+        outputs.clear();
+
+    }
+
     /**
      * Invoked when an action occurs.
      *
