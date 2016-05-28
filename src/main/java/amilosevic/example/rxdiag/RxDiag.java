@@ -77,10 +77,10 @@ public class RxDiag extends JFrame {
         return inObs.flatMap(new Func1<DiagEv, Observable<DiagEv>>() {
             @Override
             public Observable<DiagEv> call(DiagEv diagEv) {
-                if (diagEv.shape.equals("complete")) {
+                if (diagEv.shape.equals(DiagShape.COMPLETE)) {
                     return Observable.<DiagEv>empty()
                             .delay(diagEv.tick * 1000, TimeUnit.MILLISECONDS);
-                } else if (diagEv.shape.equals("error")) {
+                } else if (diagEv.shape.equals(DiagShape.ERROR)) {
                     return Observable.concat(
                             Observable.<DiagEv>empty().delay(diagEv.tick * 1000, TimeUnit.MILLISECONDS),
                             Observable.<DiagEv>error(new Error("Throw!"))
@@ -290,6 +290,8 @@ class Diag extends JPanel implements ActionListener {
     }
 
     private final BasicStroke stroke = new BasicStroke(6.f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND);
+    private final BasicStroke marker = new BasicStroke(2.f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND);
+    private final BasicStroke dashed = new BasicStroke(2.f, BasicStroke.CAP_SQUARE, BasicStroke.JOIN_MITER, 10.0f, new float[] {4.0f, 14.0f}, 0.0f);
 
     private void doDrawing(Graphics g) {
 
@@ -299,7 +301,7 @@ class Diag extends JPanel implements ActionListener {
 
         // backgound
         final int yin = 100; // in eventline y coordinate
-        final int yc = 310;
+        final int yc = 300;
         final int yout = 500; // out eventlne y coordinate
 
         // delta height for combinator & output line
@@ -310,10 +312,20 @@ class Diag extends JPanel implements ActionListener {
         int i = 0;
         for (final List<Framed<DiagEv>> in: inputs) {
             final int d = i++ * RxDiag.EV_LINE_HEIGHT;
+            final int y = yin + d;
 
-            eventline(g2, yin + d);
+            final int ey1 = y + 50;
+            final int ey2 = yc + delta - 70;
+
+            eventline(g2, y);
+
             synchronized (in) {
-                drawEv(g2, yin + d, in);
+                for (Framed<DiagEv> ev: in) {
+                    int x = 50 + ev.frame * 10;
+                    drawEv(g2, x, y, ev.value.shape, ev.value.color);
+                    drawArrow(g2, x, ey1, x, ey2, Color.BLACK);
+
+                }
             }
         }
 
@@ -322,28 +334,80 @@ class Diag extends JPanel implements ActionListener {
 
         // draw outputs
         eventline(g2, yout + delta);
-        synchronized (outputs) {
-            drawEv(g2, yout + delta, outputs);
-        }
 
+        // draw events
+        final int ey1 = yc + delta + 75;
+        final int ey2 = yout + delta - 50;
+        synchronized (outputs) {
+            for (Framed<DiagEv> ev: outputs) {
+                int x = 50 + ev.frame * 10;
+                drawEv(g2, x,  yout + delta, ev.value.shape, ev.value.color);
+                drawArrow(g2, x, ey1, x, ey2, Color.BLACK);
+            }
+        }
 
 
     }
 
-    private void drawEv(Graphics2D g2, int y, List<Framed<DiagEv>> evs) {
-        for (Framed<DiagEv> ev: evs) {
-            switch (ev.value.shape) {
-                case COMPLETE: complete(g2, 50 + ev.frame * 10, y); break;
-                case ERROR: error(g2, 50 + ev.frame * 10, y); break;
-                case MARBLE: marble(g2, 50 + ev.frame * 10, y, ev.value.color); break;
-                case SQUARE: square(g2, 50 + ev.frame * 10, y, ev.value.color); break;
-                case DIAMOND: diamond(g2, 50 + ev.frame * 10, y, ev.value.color); break;
-                case PENTAGON: pentagon(g2, 50 + ev.frame * 10, y, ev.value.color); break;
-                case TRIANGLE: triangle(g2, 50 + ev.frame * 10, y, ev.value.color); break;
-                default: throw new IllegalArgumentException("Unhandled shape");
-            }
 
+
+    private void drawEv(Graphics2D g2, int x, int y, DiagShape shape, Color color) {
+        switch (shape) {
+            case COMPLETE: complete(g2, x, y); break;
+            case ERROR: error(g2, x, y); break;
+            case MARBLE: marble(g2, x, y, color); break;
+            case SQUARE: square(g2, x, y, color); break;
+            case DIAMOND: diamond(g2, x, y, color); break;
+            case PENTAGON: pentagon(g2, x, y, color); break;
+            case TRIANGLE: triangle(g2, x, y, color); break;
+            default: throw new IllegalArgumentException("Unhandled shape");
         }
+
+    }
+
+
+
+    private Shape drawArrow(Graphics2D g2, int x1, int y1, int x2, int y2, Color color) {
+
+        final Shape shape = new Line2D.Float(x1, y1, x2, y2);
+
+        final Stroke prevStroke = g2.getStroke();
+        final AffineTransform prevTransform = g2.getTransform();
+
+        g2.setColor(color);
+        g2.setStroke(dashed);
+        g2.draw(shape);
+
+
+        int dx = x2 - x1;
+        int dy = y2 - y1;
+
+
+        //double theta = -Math.PI / 4;
+        double theta = Math.atan2(dy, dx) - Math.PI / 2;
+
+        final AffineTransform at = new AffineTransform();
+        at.setToRotation(theta, x2, y2);
+
+        GeneralPath path = new GeneralPath(GeneralPath.WIND_EVEN_ODD, 3);
+
+        path.moveTo(x2, y2);
+        path.lineTo(x2 - 8, y2 - 20);
+        path.lineTo(x2 + 8, y2 - 20);
+        path.closePath();
+
+        g2.setTransform(at);
+        g2.setStroke(marker);
+        g2.setColor(color);
+        g2.fill(path);
+        g2.draw(path);
+        g2.setColor(Color.BLACK);
+
+
+        g2.setStroke(prevStroke);
+        g2.setTransform(prevTransform);
+        return shape;
+
     }
 
     private void combinator(Graphics2D g2, int y, String text) {
